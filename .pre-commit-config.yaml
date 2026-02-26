@@ -1,0 +1,28 @@
+repos:
+  # Primary secret scanner — custom rules via .gitleaks.toml
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+        args: ["protect", "--staged", "--config=.gitleaks.toml"]
+
+  # Local reminder hook — prints remediation guide on any failure
+  - repo: local
+    hooks:
+      - id: pagos-secrets-reminder
+        name: "Pagos Security Check"
+        language: script
+        entry: scripts/secrets-reminder.sh
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Basic hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
