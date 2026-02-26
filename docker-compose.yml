@@ -64,6 +64,8 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+      mock-provider:
+        condition: service_healthy
     restart: on-failure
     environment:
       VAULT_ADDR: "http://vault:8200"

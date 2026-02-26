@@ -42,21 +42,34 @@ else
 fi
 
 # ============================================================
-# 3. Write dummy secrets
+# 3. Write secrets — api_keys fetched live from mock-provider
 # ============================================================
 echo ""
-echo "==> Writing dummy secrets..."
+echo "==> Fetching initial keys from mock-provider..."
 
-# BancoSur
+MOCK_PROVIDER_URL="${MOCK_PROVIDER_URL:-http://mock-provider:5003}"
+
+BANCOSUR_API_KEY=$(wget -qO- "${MOCK_PROVIDER_URL}/bancosur/current-key" \
+  | sed 's/.*"api_key":"\([^"]*\)".*/\1/')
+echo "    BancoSur key: ${BANCOSUR_API_KEY}"
+
+WALLETPRO_API_KEY=$(wget -qO- "${MOCK_PROVIDER_URL}/walletpro/current-key" \
+  | sed 's/.*"api_key":"\([^"]*\)".*/\1/')
+echo "    WalletPro key: ${WALLETPRO_API_KEY}"
+
+echo ""
+echo "==> Writing secrets to Vault..."
+
+# BancoSur — use real key from mock-provider
 vault kv put secret/pagos/providers/bancosur/api_key \
-  api_key="bsur_fake_initial_key_$(openssl rand -hex 8)"
+  api_key="${BANCOSUR_API_KEY}"
 
 vault kv put secret/pagos/providers/bancosur/webhook_secret \
   webhook_secret="wpro_fake_webhook_$(openssl rand -hex 8)"
 
-# WalletPro
+# WalletPro — use real key from mock-provider
 vault kv put secret/pagos/providers/walletpro/api_key \
-  api_key="wpro_fake_initial_key_$(openssl rand -hex 8)"
+  api_key="${WALLETPRO_API_KEY}"
 
 vault kv put secret/pagos/providers/walletpro/webhook_secret \
   webhook_secret="wpro_fake_webhook_$(openssl rand -hex 8)"
@@ -73,7 +86,7 @@ vault kv put secret/pagos/aws/iam_access_key \
   access_key_id="AKIAIOSFODNN7EXAMPLE" \
   secret_access_key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
-echo "    All dummy secrets written."
+echo "    All secrets written."
 
 # ============================================================
 # 4. Write policies
