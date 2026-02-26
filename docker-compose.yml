@@ -1,0 +1,174 @@
+version: "3.9"
+
+# ============================================================
+# Pagos DevSecOps Demo — Docker Compose
+#
+# Quick start:
+#   docker compose up              # Starts Vault + all services
+#   docker compose up vault-init   # One-time Vault seeding (run first)
+#
+# Full demo:
+#   1. docker compose up -d vault mock-provider
+#   2. docker compose run --rm vault-init
+#   3. source .env
+#   4. docker compose up -d payments-api webhooks-service
+#   5. curl http://localhost:5001/health
+#
+# Environment variables are read from .env (gitignored).
+# See .env.example for all required variables.
+# ============================================================
+
+networks:
+  pagos-net:
+    driver: bridge
+
+volumes:
+  vault-data:
+  vault-logs:
+
+services:
+  # ============================================================
+  # HashiCorp Vault — local secrets backend
+  # ============================================================
+  vault:
+    image: hashicorp/vault:1.16.1
+    container_name: pagos-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault-data:/vault/data
+      - vault-logs:/vault/logs
+      - ./vault/policies:/vault/policies:ro
+    command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
+    networks:
+      - pagos-net
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ============================================================
+  # Vault initialization — seeds secrets, policies, AppRoles
+  # Run once after Vault starts: docker compose run --rm vault-init
+  # ============================================================
+  vault-init:
+    image: hashicorp/vault:1.16.1
+    container_name: pagos-vault-init
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: root
+      ENV_FILE: /workspace/.env
+    volumes:
+      - ./vault/policies:/vault/policies:ro
+      - ./vault/init:/vault/init:ro
+      - .:/workspace
+    entrypoint: /vault/init/vault-init.sh
+    networks:
+      - pagos-net
+    profiles:
+      - init  # Only runs with: docker compose --profile init up vault-init
+
+  # ============================================================
+  # Mock Provider — simulates BancoSur and WalletPro APIs
+  # ============================================================
+  mock-provider:
+    build:
+      context: ./services/mock-provider
+      dockerfile: Dockerfile
+    container_name: pagos-mock-provider
+    ports:
+      - "5003:5003"
+    environment:
+      PORT: "5003"
+      DUAL_WINDOW_SECONDS: "60"
+    networks:
+      - pagos-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================================
+  # Payments API — fetches BancoSur key from Vault
+  # ============================================================
+  payments-api:
+    build:
+      context: ./services/payments-api
+      dockerfile: Dockerfile
+    container_name: pagos-payments-api
+    ports:
+      - "5001:5001"
+    depends_on:
+      vault:
+        condition: service_healthy
+      mock-provider:
+        condition: service_healthy
+    environment:
+      PORT: "5001"
+      SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
+      VAULT_ADDR: "${VAULT_ADDR:-http://vault:8200}"
+      VAULT_ROLE_ID_PAYMENTS_API: "${VAULT_ROLE_ID_PAYMENTS_API}"
+      VAULT_SECRET_ID_PAYMENTS_API: "${VAULT_SECRET_ID_PAYMENTS_API}"
+      MOCK_PROVIDER_URL: "http://mock-provider:5003"
+      PREVIOUS_KEY_TTL: "60"
+      # AWS (optional — for production backend)
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+    networks:
+      - pagos-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ============================================================
+  # Webhooks Service — validates WalletPro HMAC signatures
+  # ============================================================
+  webhooks-service:
+    build:
+      context: ./services/webhooks-service
+      dockerfile: Dockerfile
+    container_name: pagos-webhooks-service
+    ports:
+      - "5002:5002"
+    depends_on:
+      vault:
+        condition: service_healthy
+      mock-provider:
+        condition: service_healthy
+    environment:
+      PORT: "5002"
+      SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
+      VAULT_ADDR: "${VAULT_ADDR:-http://vault:8200}"
+      VAULT_ROLE_ID_WEBHOOKS_SERVICE: "${VAULT_ROLE_ID_WEBHOOKS_SERVICE}"
+      VAULT_SECRET_ID_WEBHOOKS_SERVICE: "${VAULT_SECRET_ID_WEBHOOKS_SERVICE}"
+      MOCK_PROVIDER_URL: "http://mock-provider:5003"
+      PREVIOUS_KEY_TTL: "60"
+      # AWS (optional)
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+    networks:
+      - pagos-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
