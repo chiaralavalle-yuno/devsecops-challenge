@@ -119,9 +119,11 @@ services:
     environment:
       PORT: "5001"
       SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
-      VAULT_ADDR: "${VAULT_ADDR:-http://vault:8200}"
-      VAULT_ROLE_ID_PAYMENTS_API: "${VAULT_ROLE_ID_PAYMENTS_API}"
-      VAULT_SECRET_ID_PAYMENTS_API: "${VAULT_SECRET_ID_PAYMENTS_API}"
+      VAULT_ADDR: "http://vault:8200"
+      # Local demo uses root token (dev mode). Production: remove VAULT_TOKEN
+      # and set VAULT_ROLE_ID_PAYMENTS_API + VAULT_SECRET_ID_PAYMENTS_API
+      # injected via Kubernetes secrets or ECS task role.
+      VAULT_TOKEN: "root"
       MOCK_PROVIDER_URL: "http://mock-provider:5003"
       PREVIOUS_KEY_TTL: "60"
       # AWS (optional — for production backend)
@@ -157,9 +159,11 @@ services:
     environment:
       PORT: "5002"
       SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
-      VAULT_ADDR: "${VAULT_ADDR:-http://vault:8200}"
-      VAULT_ROLE_ID_WEBHOOKS_SERVICE: "${VAULT_ROLE_ID_WEBHOOKS_SERVICE}"
-      VAULT_SECRET_ID_WEBHOOKS_SERVICE: "${VAULT_SECRET_ID_WEBHOOKS_SERVICE}"
+      VAULT_ADDR: "http://vault:8200"
+      # Local demo uses root token (dev mode). Production: remove VAULT_TOKEN
+      # and set VAULT_ROLE_ID_WEBHOOKS_SERVICE + VAULT_SECRET_ID_WEBHOOKS_SERVICE
+      # injected via Kubernetes secrets or ECS task role.
+      VAULT_TOKEN: "root"
       MOCK_PROVIDER_URL: "http://mock-provider:5003"
       PREVIOUS_KEY_TTL: "60"
       # AWS (optional)
