@@ -51,28 +51,36 @@ MOCK_PROVIDER_URL="${MOCK_PROVIDER_URL:-http://mock-provider:5003}"
 
 BANCOSUR_API_KEY=$(wget -qO- "${MOCK_PROVIDER_URL}/bancosur/current-key" \
   | sed 's/.*"api_key":"\([^"]*\)".*/\1/')
-echo "    BancoSur key: ${BANCOSUR_API_KEY}"
+echo "    BancoSur api_key: ${BANCOSUR_API_KEY}"
+
+BANCOSUR_WEBHOOK_SECRET=$(wget -qO- "${MOCK_PROVIDER_URL}/bancosur/current-webhook-secret" \
+  | sed 's/.*"webhook_secret":"\([^"]*\)".*/\1/')
+echo "    BancoSur webhook_secret: ${BANCOSUR_WEBHOOK_SECRET}"
 
 WALLETPRO_API_KEY=$(wget -qO- "${MOCK_PROVIDER_URL}/walletpro/current-key" \
   | sed 's/.*"api_key":"\([^"]*\)".*/\1/')
-echo "    WalletPro key: ${WALLETPRO_API_KEY}"
+echo "    WalletPro api_key: ${WALLETPRO_API_KEY}"
+
+WALLETPRO_WEBHOOK_SECRET=$(wget -qO- "${MOCK_PROVIDER_URL}/walletpro/current-webhook-secret" \
+  | sed 's/.*"webhook_secret":"\([^"]*\)".*/\1/')
+echo "    WalletPro webhook_secret: ${WALLETPRO_WEBHOOK_SECRET}"
 
 echo ""
 echo "==> Writing secrets to Vault..."
 
-# BancoSur — use real key from mock-provider
+# BancoSur — use real values from mock-provider
 vault kv put secret/pagos/providers/bancosur/api_key \
   api_key="${BANCOSUR_API_KEY}"
 
 vault kv put secret/pagos/providers/bancosur/webhook_secret \
-  webhook_secret="wpro_fake_webhook_$(openssl rand -hex 8)"
+  webhook_secret="${BANCOSUR_WEBHOOK_SECRET}"
 
-# WalletPro — use real key from mock-provider
+# WalletPro — use real values from mock-provider
 vault kv put secret/pagos/providers/walletpro/api_key \
   api_key="${WALLETPRO_API_KEY}"
 
 vault kv put secret/pagos/providers/walletpro/webhook_secret \
-  webhook_secret="wpro_fake_webhook_$(openssl rand -hex 8)"
+  webhook_secret="${WALLETPRO_WEBHOOK_SECRET}"
 
 # Database (stored but not rotated — see README)
 vault kv put secret/pagos/database/transactions_url \
