@@ -4,15 +4,12 @@ version: "3.9"
 # Pagos DevSecOps Demo — Docker Compose
 #
 # Quick start:
-#   docker compose up              # Starts Vault + all services
-#   docker compose up vault-init   # One-time Vault seeding (run first)
+#   docker compose up              # Starts everything; vault-init seeds Vault automatically
 #
 # Full demo:
-#   1. docker compose up -d vault mock-provider
-#   2. docker compose run --rm vault-init
-#   3. source .env
-#   4. docker compose up -d payments-api webhooks-service
-#   5. curl http://localhost:5001/health
+#   1. docker compose up -d
+#   2. source .env          # Load AppRole credentials written by vault-init
+#   3. curl http://localhost:5001/health
 #
 # Environment variables are read from .env (gitignored).
 # See .env.example for all required variables.
@@ -57,7 +54,9 @@ services:
 
   # ============================================================
   # Vault initialization — seeds secrets, policies, AppRoles
-  # Run once after Vault starts: docker compose run --rm vault-init
+  # Runs automatically on docker compose up, waits for vault healthy,
+  # then exits 0. restart: on-failure means it won't be restarted on
+  # clean exit, but will retry if it fails before Vault is ready.
   # ============================================================
   vault-init:
     image: hashicorp/vault:1.16.1
@@ -65,6 +64,7 @@ services:
     depends_on:
       vault:
         condition: service_healthy
+    restart: on-failure
     environment:
       VAULT_ADDR: "http://vault:8200"
       VAULT_TOKEN: root
@@ -76,8 +76,6 @@ services:
     entrypoint: /vault/init/vault-init.sh
     networks:
       - pagos-net
-    profiles:
-      - init  # Only runs with: docker compose --profile init up vault-init
 
   # ============================================================
   # Mock Provider — simulates BancoSur and WalletPro APIs
