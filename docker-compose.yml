@@ -114,6 +114,8 @@ services:
         condition: service_healthy
       mock-provider:
         condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
     environment:
       PORT: "5001"
       SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
@@ -150,6 +152,8 @@ services:
         condition: service_healthy
       mock-provider:
         condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
     environment:
       PORT: "5002"
       SECRETS_BACKEND: "${SECRETS_BACKEND:-vault}"
