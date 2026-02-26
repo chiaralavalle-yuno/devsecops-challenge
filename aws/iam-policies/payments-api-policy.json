@@ -1,0 +1,43 @@
+{
+  "_comment": "IAM policy for payments-api service. Grants read-only access to BancoSur secrets only.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadBancoSurSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/bancosur/*"
+      ]
+    },
+    {
+      "Sid": "ListBancoSurSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/bancosur/*"
+      ]
+    },
+    {
+      "Sid": "AllowKMSDecrypt",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": [
+        "arn:aws:kms:*:*:key/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "secretsmanager.*.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

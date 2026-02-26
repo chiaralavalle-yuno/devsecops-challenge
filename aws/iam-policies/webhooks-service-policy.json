@@ -1,0 +1,45 @@
+{
+  "_comment": "IAM policy for webhooks-service. Grants read-only access to webhook secrets for all providers.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadWebhookSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/bancosur/webhook_secret*",
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/walletpro/webhook_secret*"
+      ]
+    },
+    {
+      "Sid": "ListWebhookSecretVersions",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/bancosur/webhook_secret*",
+        "arn:aws:secretsmanager:*:*:secret:pagos/providers/walletpro/webhook_secret*"
+      ]
+    },
+    {
+      "Sid": "AllowKMSDecrypt",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": [
+        "arn:aws:kms:*:*:key/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "secretsmanager.*.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
