@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pagos.example.com/schemas/audit-event/v1",
+  "title": "Pagos Audit Event",
+  "description": "Unified audit event format for all Pagos secrets management operations. Both AWS CloudTrail and Vault audit device events are normalized to this schema for SIEM forwarding.",
+  "type": "object",
+  "required": ["timestamp", "action", "actor", "resource", "backend", "result"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of the event",
+      "examples": ["2025-11-15T14:32:00.000Z"]
+    },
+    "action": {
+      "type": "string",
+      "description": "The type of operation performed",
+      "enum": [
+        "secret_read",
+        "secret_write",
+        "rotation_started",
+        "rotation_preflight_failed",
+        "rotation_rollback_started",
+        "rotation_complete",
+        "rotation_failed_rollback",
+        "break_glass_activated",
+        "break_glass_token_issued",
+        "key_rotated",
+        "key_validated",
+        "previous_key_revoked",
+        "previous_key_cleared",
+        "hmac_validated",
+        "webhook_validation",
+        "startup_credentials_loaded",
+        "payment_processed"
+      ]
+    },
+    "actor": {
+      "type": "string",
+      "description": "Service or human operator that performed the action",
+      "examples": [
+        "payments-api",
+        "webhooks-service",
+        "rotation-agent",
+        "mock-provider",
+        "alice.smith"
+      ]
+    },
+    "resource": {
+      "type": "string",
+      "description": "Secret path or resource that was accessed",
+      "examples": [
+        "pagos/providers/bancosur/api_key",
+        "pagos/providers/walletpro/webhook_secret",
+        "provider/bancosur"
+      ]
+    },
+    "backend": {
+      "type": "string",
+      "description": "Secrets backend where the operation occurred",
+      "enum": ["aws", "vault", "mock-provider", "unknown"]
+    },
+    "result": {
+      "type": "string",
+      "description": "Whether the operation succeeded or failed",
+      "enum": ["success", "failure", "initiated", "degraded"]
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional context specific to the action type",
+      "properties": {
+        "error": {
+          "type": "string",
+          "description": "Error message if result is failure"
+        },
+        "attempt": {
+          "type": "integer",
+          "description": "Retry attempt number for startup operations"
+        },
+        "startup": {
+          "type": "boolean",
+          "description": "True if this is a startup credential load"
+        },
+        "check": {
+          "type": "string",
+          "description": "Context for the read operation (e.g., 'health')"
+        },
+        "trigger": {
+          "type": "string",
+          "description": "What triggered the operation (e.g., 'reload_credentials')"
+        },
+        "old_key_prefix": {
+          "type": "string",
+          "description": "First 8 chars of the old key (for rotation tracking)"
+        },
+        "new_key_prefix": {
+          "type": "string",
+          "description": "First 8 chars of the new key (for rotation tracking)"
+        },
+        "path": {
+          "type": "string",
+          "description": "Full secret path for rotation events"
+        },
+        "dual_window_seconds": {
+          "type": "integer",
+          "description": "Duration of dual-credential overlap window"
+        },
+        "rollback_result": {
+          "type": "string",
+          "enum": ["success", "failure", "degraded"]
+        },
+        "incident_ticket": {
+          "type": "string",
+          "description": "Incident ticket number for break-glass events"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for the operation (especially for break-glass)"
+        },
+        "token_ttl": {
+          "type": "string",
+          "description": "Token TTL for break-glass token events"
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "Validation result for key/HMAC validation events"
+        },
+        "client_ip": {
+          "type": "string",
+          "description": "Client IP address for webhook validation events"
+        },
+        "amount": {
+          "type": ["number", "string"],
+          "description": "Payment amount for payment_processed events"
+        }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "timestamp": "2025-11-15T14:32:00.000Z",
+      "action": "rotation_started",
+      "actor": "rotation-agent",
+      "resource": "pagos/providers/bancosur/api_key",
+      "backend": "vault",
+      "result": "success",
+      "metadata": {
+        "old_key_prefix": "bsur_a1b2...",
+        "path": "pagos/providers/bancosur/api_key"
+      }
+    },
+    {
+      "timestamp": "2025-11-15T14:32:15.000Z",
+      "action": "rotation_complete",
+      "actor": "rotation-agent",
+      "resource": "pagos/providers/bancosur/api_key",
+      "backend": "vault",
+      "result": "success",
+      "metadata": {
+        "new_key_prefix": "bsur_c3d4...",
+        "path": "pagos/providers/bancosur/api_key"
+      }
+    }
+  ]
+}

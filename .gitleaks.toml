@@ -1,0 +1,97 @@
+# Gitleaks configuration for Pagos DevSecOps Demo
+# Run: gitleaks detect --config=.gitleaks.toml
+# Trade-off: allowlists reduce false positives in example/docs files but require
+# discipline to not use allowed prefixes for real secrets.
+
+title = "Pagos Gitleaks Config"
+
+[extend]
+# Inherit default rules from upstream gitleaks
+useDefault = true
+
+# ============================================================
+# Custom Rules
+# ============================================================
+
+[[rules]]
+id = "pagos-bancosur-key"
+description = "BancoSur API Key"
+regex = '''bsur_[a-zA-Z0-9]{32,}'''
+tags = ["pagos", "bancosur", "api-key"]
+  [rules.allowlist]
+  regexes = [
+    '''bsur_fake_[a-zA-Z0-9]+''',
+    '''bsur_test_[a-zA-Z0-9]+''',
+    '''bsur_example_[a-zA-Z0-9]+''',
+    '''bsur_dummy_[a-zA-Z0-9]+''',
+  ]
+
+[[rules]]
+id = "pagos-walletpro-key"
+description = "WalletPro API Key or Webhook Secret"
+regex = '''wpro_[a-zA-Z0-9]{32,}'''
+tags = ["pagos", "walletpro", "api-key"]
+  [rules.allowlist]
+  regexes = [
+    '''wpro_fake_[a-zA-Z0-9]+''',
+    '''wpro_test_[a-zA-Z0-9]+''',
+    '''wpro_example_[a-zA-Z0-9]+''',
+    '''wpro_dummy_[a-zA-Z0-9]+''',
+  ]
+
+[[rules]]
+id = "aws-access-key-id"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "credentials"]
+  [rules.allowlist]
+  regexes = [
+    '''AKIA_FAKE_[0-9A-Z]+''',
+    '''AKIAIOSFODNN7EXAMPLE''',
+  ]
+
+[[rules]]
+id = "generic-db-url"
+description = "Database URL with embedded credentials"
+regex = '''postgres://[^:]+:[^@]+@'''
+tags = ["database", "credentials"]
+  [rules.allowlist]
+  regexes = [
+    '''postgres://user:password@''',
+    '''postgres://\$\{[^}]+\}''',
+    '''postgres://your_''',
+    '''postgres://<''',
+  ]
+
+# ============================================================
+# Global Allowlist
+# ============================================================
+
+[allowlist]
+description = "Global allowlist — known safe patterns in docs and examples"
+paths = [
+  '''.env\.example''',
+  '''docs/''',
+  '''tests/fixtures/''',
+  '''\.trufflehogignore''',
+  '''scripts/demo-blocked-commit\.sh''',  # intentionally contains a fake key for demo purposes
+  '''audit/sample-audit\.log''',
+]
+regexes = [
+  # Commonly used placeholder patterns in documentation
+  '''sk_test_''',
+  '''EXAMPLE_''',
+  '''dummy_''',
+  '''your_''',
+  '''<replace_with_''',
+  '''<your_''',
+]
+commits = []
+stopwords = [
+  "example",
+  "placeholder",
+  "dummy",
+  "fake",
+  "test",
+  "sample",
+]

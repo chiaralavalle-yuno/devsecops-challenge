@@ -1,0 +1,33 @@
+# .trufflehogignore — Paths and patterns that are known false positives for TruffleHog
+#
+# Trade-off documentation:
+# TruffleHog without --only-verified catches more secrets (including unverified/high-entropy
+# strings) but generates false positives on config files, docs, and test fixtures.
+# This file mitigates false positives. Gitleaks with custom pattern rules provides the
+# authoritative verdict; TruffleHog is defense-in-depth.
+#
+# Format: glob patterns, one per line
+# Syntax: https://github.com/trufflesecurity/trufflehog#gitignore-syntax
+
+# Example files and documentation
+.env.example
+docs/
+*.md
+
+# Audit sample log contains realistic (but fake) event data
+audit/sample-audit.log
+
+# Test fixtures
+tests/
+**/fixtures/
+**/test_*
+*_test.py
+
+# AWS example credentials (well-known test values)
+aws/oidc-setup.md
+
+# Gitleaks config contains allowlist patterns that look like secrets
+.gitleaks.toml
+
+# Vault init script uses placeholder values
+vault/init/vault-init.sh

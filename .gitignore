@@ -1,0 +1,47 @@
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+aws-credentials
+.aws/credentials
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Vault data
+vault/data/
+vault/logs/
+
+# Audit log (gitignored; sample-audit.log is committed)
+audit/audit.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

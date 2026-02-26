@@ -1,0 +1,63 @@
+{
+  "_comment": "IAM policy for rotation-agent. Grants read+write to all pagos secrets for rotation. Cannot manage IAM or Secrets Manager configuration itself.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadWritePagosSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:UpdateSecretVersionStage"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:pagos/*"
+      ]
+    },
+    {
+      "Sid": "ListPagosSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "secretsmanager:SecretId": "pagos/*"
+        }
+      }
+    },
+    {
+      "Sid": "CloudWatchAuditLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/pagos/rotation-audit*"
+      ]
+    },
+    {
+      "Sid": "AllowKMSOperations",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey"
+      ],
+      "Resource": [
+        "arn:aws:kms:*:*:key/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "secretsmanager.*.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
