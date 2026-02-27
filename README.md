@@ -280,6 +280,102 @@ vault kv get secret/pagos/providers/bancosur/api_key  # → 403
 
 ---
 
+## Engineering Notes
+
+### Design Decisions
+
+**Root token for local demo instead of AppRole at runtime**
+
+Docker Compose interpolates `.env` at startup — before `vault-init` runs. This means AppRole credentials generated dynamically can never be injected via `.env` into service containers in the same `docker compose up`. Rather than add a two-phase startup (compose up, wait, export, compose restart), services receive `VAULT_TOKEN=root` directly in the compose environment. The AppRole path is still fully implemented: `_get_from_vault` checks for `VAULT_TOKEN` first, falls back to `VAULT_ROLE_ID_*` / `VAULT_SECRET_ID_*` when present. Production deploys use AppRole or IAM-based auth injected via Kubernetes secrets or ECS task roles — not via `.env`.
+
+**curl instead of the vault CLI in break-glass.sh**
+
+The Vault CLI is not available in the typical operator environment (and bundling it creates a dependency). All Vault operations in `break-glass.sh` use `curl` against the HTTP API — the same API the CLI wraps. This makes the script portable: it runs wherever `curl` is available, with no PATH or binary version concerns.
+
+**Mock-provider as the source of truth for key state**
+
+Rather than generating random keys in `vault-init.sh` and also in `mock-provider`, `vault-init` fetches the current keys from mock-provider via HTTP at initialization time. This ensures Vault and mock-provider always agree on what the valid credentials are. The alternative (having Vault be the source of truth and push values into mock-provider) would require mock-provider to expose a write API, which would undermine the simulation of an external third-party provider.
+
+**File-based audit log in addition to backend-native audit**
+
+For the AWS backend, CloudTrail captures every `GetSecretValue` call automatically. For the Vault backend, the audit device writes every API call. The rotation script additionally writes to `audit/audit.log` in a normalized JSON format. This extra write serves two purposes: it provides a unified, backend-agnostic event stream (useful for cross-backend SIEM normalization), and it gives evaluators a concrete file to inspect without needing to access CloudTrail or Vault audit logs.
+
+---
+
+### Challenges & How They Were Solved
+
+**Vault dev mode discards all state on restart**
+
+Vault's dev mode (`-dev`) starts with an in-memory store. Every `docker compose restart` wipes all secrets and policies. The `vault-init` service re-seeds everything on each startup, which means the startup sequence must be strictly ordered: mock-provider must be healthy before vault-init runs (so it can fetch current keys), and services must wait for vault-init to complete before they try to fetch credentials. The `depends_on` with `condition: service_completed_successfully` and `condition: service_healthy` enforce this ordering without shell sleeps.
+
+**Vault dev mode ignores the config file**
+
+The `vault.hcl` config file (TLS, storage backend, telemetry) is correct for a production-style startup but is ignored in dev mode. An earlier version of `docker-compose.yml` mounted `./vault/config:/vault/config:ro`, which caused a read-only filesystem error because the dev-mode container also tries to write to `/vault/config`. Removing the mount resolved the conflict. The config file is kept in the repository as the reference for production configuration.
+
+**Gitleaks `detect` vs `protect --staged`**
+
+The pre-commit hook initially invoked gitleaks without subcommand, which defaults to `detect` and scans the full git history on every commit. This is slow and produces false positives for secrets that were already cleaned up. The correct subcommand for pre-commit is `protect --staged`, which scans only the currently staged diff. Changing the hook args from `["--config=.gitleaks.toml"]` to `["protect", "--staged", "--config=.gitleaks.toml"]` fixed this.
+
+**demo-blocked-commit.sh triggering its own gitleaks scan**
+
+`demo-blocked-commit.sh` creates a temporary file containing a fake `bsur_` key to demonstrate that the pre-commit hook blocks it. When gitleaks was pointed at `protect --staged`, it correctly staged and caught the key — but it also caught the key inside `demo-blocked-commit.sh` itself when that file was first committed. The fix was to add `scripts/demo-blocked-commit.sh` to the global allowlist paths in `.gitleaks.toml`, so gitleaks skips the script file itself while still catching any real secrets staged in other files.
+
+**Webhook secret vs API key confusion in mock-provider**
+
+Initially, `mock-provider` stored only an API key per provider. The webhooks-service validates HMAC-SHA256 signatures using a separate shared webhook secret — a different credential from the API key. The HMAC validation endpoint was accidentally using `state["current_key"]` (the API key) instead of a dedicated `webhook_secret`. This caused every webhook signature validation to fail. The fix added a separate `webhook_secret` field to each provider's state, exposed `/current-webhook-secret` endpoints so `vault-init` can fetch and sync them, and corrected the HMAC function to use the right field.
+
+---
+
+### AI-Assisted False Positive Analysis
+
+`scripts/ai_false_positive.py` adds a third decision layer between Gitleaks blocking a commit and a developer manually reviewing the finding.
+
+**Three-tier decision logic:**
+
+1. **Immediate PASS** (deterministic): the finding is in a known-safe path (`tests/`, `fixtures/`, `docs/`) *and* the value starts with a known-safe prefix (`fake_`, `test_`, `example_`, `mock_`, `dummy_`). No API call needed.
+
+2. **Immediate FAIL** (deterministic): the finding is in a production code path (`src/`, `services/`, `rotation/`). No leniency — these paths should never contain credential values.
+
+3. **Ambiguous** (AI-assisted): anything that doesn't match rule 1 or 2 is sent to `claude-sonnet-4-20250514` with the file path, matched pattern, and surrounding context. The model returns a structured verdict with confidence and reasoning.
+
+**Why not call the AI for everything?** Latency. A pre-commit hook that adds 2–3 seconds to common cases (test fixtures with `fake_` prefixes) will be disabled by developers. The deterministic fast paths cover ~90% of real-world findings, keeping the AI call for genuinely ambiguous cases.
+
+**Caching**: verdicts are cached in `/tmp/pagos_fp_cache.json` keyed by `(path, pattern, value_prefix)`. The same finding in the same file doesn't trigger a second API call within a session.
+
+**Audit trail**: every verdict (including AI reasoning) is appended to `audit/audit.log` with `action: "false_positive_analysis"`. This gives security reviewers visibility into what the AI decided and why, enabling periodic calibration of the deterministic rules.
+
+**Exit codes**: 0 = false positive (commit can proceed after developer confirms), 1 = real secret detected (commit must be blocked). The script is designed to be called by a wrapper hook, not to replace gitleaks — gitleaks still makes the authoritative blocking decision.
+
+---
+
+### What Would Be Different in Production
+
+**OIDC instead of `VAULT_TOKEN` in CI**
+
+The demo stores `VAULT_TOKEN` as a GitHub Actions secret. In production, GitHub Actions would use OIDC to assume a scoped IAM role (no exportable static key, 15-minute token TTL, scoped to specific repository + branch). The setup is documented in `aws/oidc-setup.md` and the workflow is OIDC-ready (`permissions: id-token: write`) — activating it requires creating the OIDC provider in AWS and adding the role ARN as a GitHub variable.
+
+**Raft storage instead of dev-mode file storage**
+
+Vault dev mode and single-node file storage are both single points of failure. Production uses Raft integrated storage (3- or 5-node cluster) with auto-unseal via AWS KMS or Azure Key Vault. This eliminates the manual unseal requirement and provides HA with automatic leader election.
+
+**Kubernetes + External Secrets Operator instead of direct SDK calls**
+
+Services calling `hvac` or `boto3` at startup create a tight coupling between application code and the secrets backend. In production, [External Secrets Operator](https://external-secrets.io/) runs in the cluster, pulls secrets from AWS Secrets Manager (or Vault), and injects them as Kubernetes `Secret` objects. Services read from projected volumes — no SDK, no startup latency, automatic refresh on rotation.
+
+**Real Slack alerting instead of log-only**
+
+`break-glass.sh` and the rotation workflow format Slack webhook payloads and log them to `audit/audit.log`. Setting `SLACK_WEBHOOK_URL` as an environment variable enables real posting. In production, this would be a dedicated `#pagos-security-alerts` channel with on-call PagerDuty integration — break-glass activation and rotation failures would page the on-call engineer.
+
+**TruffleHog with `--only-verified` for lower false-positive rate**
+
+The CI workflow runs TruffleHog without `--only-verified` to catch unverified high-entropy strings. In production with established baseline `.trufflehogignore` rules, enabling `--only-verified` would reduce noise by only alerting on credentials that TruffleHog can actively verify against provider APIs (Stripe, GitHub, AWS, etc.). The trade-off: you miss secrets for providers TruffleHog doesn't have verifiers for. Running both modes (verified + unverified) in separate jobs with different failure thresholds is the production pattern.
+
+**Vault dynamic secrets for database credentials**
+
+The demo stores static DB connection strings. In production, the application would request a dynamic DB credential from Vault on startup — Vault creates a temporary PostgreSQL/MySQL role with a 1-hour TTL and returns the credentials. The role is automatically revoked when the lease expires. The application never holds a static password; the credential lifecycle is managed entirely by Vault.
+
+---
+
 ## Key Design Decisions
 
 ### 1. AWS Secrets Manager as Primary Backend
